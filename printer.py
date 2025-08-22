@@ -173,7 +173,7 @@ class printer(cmd.Cmd, object):
     def do_load(self, arg):
         "Run commands from file:  load cmd.txt"
         if not arg:
-            arg = eval(input("File: "))
+            arg = input("File: ")
         data = file().read(arg).decode() or ""
         for cmd in data.splitlines():
             # simulate command prompt
@@ -184,7 +184,7 @@ class printer(cmd.Cmd, object):
     # ------------------------[ loop <cmd> <arg1> <arg2> … ]--------------
     def do_loop(self, arg):
         "Run command for multiple arguments:  loop <cmd> <arg1> <arg2> …"
-        args = re.split("\s+", arg)
+        args = re.split(r"\s+", arg)
         if len(args) > 1:
             cmd = args.pop(0)
             for arg in args:
@@ -204,7 +204,7 @@ class printer(cmd.Cmd, object):
     def do_open(self, arg, mode=""):
         "Connect to remote device:  open <target>"
         if not arg:
-            arg = eval(input("Target: "))
+            arg = input("Target: ")
         # open connection
         try:
             newtarget = arg != self.target
@@ -306,7 +306,7 @@ class printer(cmd.Cmd, object):
     def do_chvol(self, arg):
         "Change remote volume:  chvol <volume>"
         if not arg:
-            arg = eval(input("Volume: "))
+            arg = input("Volume: ")
         if arg and self.vol_exists(arg):
             if self.mode == "ps":
                 self.set_vol("%" + arg.strip("%") + "%")
@@ -358,7 +358,7 @@ class printer(cmd.Cmd, object):
     def do_cd(self, arg):
         "Change remote working directory:  cd <path>"
         if not self.cpath(arg) or self.dir_exists(self.rpath(arg)):
-            if re.match("^[\." + c.SEP + "]+$", self.cpath(arg)):
+            if re.match(r"^[\." + c.SEP + r"]+$", self.cpath(arg)):
                 output().raw("*** Congratulations, path traversal found ***")
                 output().chitchat("Consider setting 'traversal' instead of 'cd'.")
             self.set_cwd(arg)
@@ -446,7 +446,7 @@ class printer(cmd.Cmd, object):
     def do_get(self, arg, lpath="", r=True):
         "Receive file:  get <file>"
         if not arg:
-            arg = eval(input("Remote file: "))
+            arg = input("Remote file: ")
         if not lpath:
             lpath = self.basename(arg)
         path = self.rpath(arg) if r else arg
@@ -472,7 +472,7 @@ class printer(cmd.Cmd, object):
     def do_put(self, arg, rpath=""):
         "Send file:  put <local file>"
         if not arg:
-            arg = eval(input("Local file: "))
+            arg = input("Local file: ")
         if not rpath:
             rpath = os.path.basename(arg)
         rpath = self.rpath(rpath)
@@ -493,7 +493,7 @@ class printer(cmd.Cmd, object):
     # ------------------------[ append <file> <string> ]------------------
     def do_append(self, arg):
         "Append to file:  append <file> <string>"
-        arg = re.split("\s+", arg, 1)
+        arg = re.split(r"\s+", arg, 1)
         if len(arg) > 1:
             path, data = arg
             rpath = self.rpath(path)
@@ -506,14 +506,14 @@ class printer(cmd.Cmd, object):
     def do_touch(self, arg):
         "Update file timestamps:  touch <file>"
         if not arg:
-            arg = eval(input("Remote file: "))
+            arg = input("Remote file: ")
         rpath = self.rpath(arg)
         self.append(rpath, "")
 
     # ------------------------[ delete <file> ]---------------------------
     def do_delete(self, arg):
         if not arg:
-            arg = eval(input("File: "))
+            arg = input("File: ")
         self.delete(arg)
 
     # define alias but do not show alias in help
@@ -527,7 +527,7 @@ class printer(cmd.Cmd, object):
     def do_cat(self, arg):
         "Output remote file to stdout:  cat <file>"
         if not arg:
-            arg = eval(input("Remote file: "))
+            arg = input("Remote file: ")
         path = self.rpath(arg)
         str_recv = self.get(path)
         if str_recv != c.NONEXISTENT:
@@ -539,7 +539,7 @@ class printer(cmd.Cmd, object):
         # get name of temporary file
         t = tempfile.NamedTemporaryFile(delete=False)
         lpath = t.name
-        t.close
+        t.close()
         # download to temporary file
         self.do_get(arg, lpath)
         # get md5sum for original file
@@ -738,7 +738,9 @@ class printer(cmd.Cmd, object):
                         self.verify_blind(path, file)
 
     # check for path traversal
-    def verify_path(self, path, found={}):
+    def verify_path(self, path, found=None):
+        if found is None:
+            found = {}
         # 1st method: EXISTS
         opt1 = self.dir_exists(path) or False
         # 2nd method: DIRLIST
@@ -794,7 +796,7 @@ class printer(cmd.Cmd, object):
     def do_site(self, arg):
         "Execute custom command on printer:  site <command>"
         if not arg:
-            arg = eval(input("Command: "))
+            arg = input("Command: ")
         str_recv = self.cmd(arg)
         output().info(str_recv)
 
@@ -807,16 +809,19 @@ class printer(cmd.Cmd, object):
     └──────────────────────────────────────────────────────────┘
     """
         if not arg:
-            arg = eval(input('File or "text": '))
+            arg = input('File or "text": ')
         if arg.startswith('"'):
             data = arg.strip('"')  # raw text string
         elif arg.endswith(".ps"):
             data = file().read(arg)  # postscript file
         else:
             data = self.convert(arg, "pcl")  # anything else…
-            data = c.UEL.encode() + data + c.UEL.encode()
+            if data is not None:
+                data = c.UEL.encode() + data + c.UEL.encode()
         if data:
             self.send(data)  # send pcl datastream to printer
+        else:
+            output().errmsg("Cannot print", "No data to send.")
         print("H")
 
     # convert image to page description language
@@ -836,9 +841,11 @@ class printer(cmd.Cmd, object):
             out, err = subprocess.PIPE, subprocess.PIPE
             p = subprocess.Popen(cmd, stdout=out, stderr=err)
             data, stderr = p.communicate()
-        except:
+        except Exception:
             stderr = "ImageMagick or Ghostscript missing"
-        if stderr:
+            data = None
+        # Only treat as error if data is empty
+        if not data:
             output().errmsg("Cannot convert", stderr)
-        else:
-            return data
+            return None
+        return data
